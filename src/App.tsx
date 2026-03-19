@@ -1,8 +1,11 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, LayersControl, GeoJSON, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { UploadCloud, Info, X, Map as MapIcon, Layers } from 'lucide-react';
+import { UploadCloud, Info, X, Map as MapIcon, Layers, Box } from 'lucide-react';
 import SOSI from 'sosijs';
+import Map3D, { Source, Layer, NavigationControl, MapRef } from 'react-map-gl/maplibre';
+import 'maplibre-gl/dist/maplibre-gl.css';
+import bbox from '@turf/bbox';
 
 // Fix for Leaflet default icon issue in React
 import L from 'leaflet';
@@ -61,6 +64,22 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<'2d' | '3d'>('2d');
+  const map3dRef = useRef<MapRef>(null);
+
+  React.useEffect(() => {
+    if (viewMode === '3d' && latestBoundsData && map3dRef.current) {
+      try {
+        const [minLng, minLat, maxLng, maxLat] = bbox(latestBoundsData);
+        map3dRef.current.fitBounds(
+          [[minLng, minLat], [maxLng, maxLat]],
+          { padding: 50, duration: 1000 }
+        );
+      } catch (e) {
+        console.error("Could not fit bounds", e);
+      }
+    }
+  }, [latestBoundsData, viewMode]);
 
   const onDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -102,6 +121,13 @@ export default function App() {
         if (!geojson || !geojson.features || geojson.features.length === 0) {
           throw new Error('No features found or could not parse the file.');
         }
+
+        // Inject color for 3D rendering
+        geojson.features.forEach((f: any) => {
+          f.properties = f.properties || {};
+          const sosiCode = f.properties.OBJTYPE || f.properties['..OBJTYPE'] || f.properties.objtype || Object.values(f.properties)[0] || 'default';
+          f.properties._color = stringToColor(String(sosiCode));
+        });
 
         newLayers.push({
           id: Math.random().toString(36).substring(2, 9),
@@ -174,51 +200,110 @@ export default function App() {
       
       {/* Map Area */}
       <div className="absolute inset-0 z-0">
-        <MapContainer 
-          center={[65.0, 15.0]} 
-          zoom={5} 
-          style={{ height: '100%', width: '100%', backgroundColor: '#B7DC8F' }}
-          zoomControl={false}
-        >
-          <LayersControl position="topright">
-            <BaseLayer checked name="OpenStreetMap">
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-            </BaseLayer>
-            <BaseLayer name="Google Maps (Roadmap)">
-              <TileLayer
-                attribution='&copy; Google'
-                url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
-              />
-            </BaseLayer>
-            <BaseLayer name="Google Maps (Satellite)">
-              <TileLayer
-                attribution='&copy; Google'
-                url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
-              />
-            </BaseLayer>
-          </LayersControl>
+        {viewMode === '2d' ? (
+          <MapContainer 
+            center={[65.0, 15.0]} 
+            zoom={5} 
+            style={{ height: '100%', width: '100%', backgroundColor: '#B7DC8F' }}
+            zoomControl={false}
+          >
+            <LayersControl position="topright">
+              <BaseLayer checked name="OpenStreetMap">
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+              </BaseLayer>
+              <BaseLayer name="Google Maps (Roadmap)">
+                <TileLayer
+                  attribution='&copy; Google'
+                  url="https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"
+                />
+              </BaseLayer>
+              <BaseLayer name="Google Maps (Satellite)">
+                <TileLayer
+                  attribution='&copy; Google'
+                  url="https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+                />
+              </BaseLayer>
+            </LayersControl>
 
-          {/* Add Zoom Control manually to position it bottom right */}
-          <div className="leaflet-bottom leaflet-right">
-            <div className="leaflet-control-zoom leaflet-bar leaflet-control">
-              <a className="leaflet-control-zoom-in" href="#" title="Zoom in" role="button" aria-label="Zoom in">+</a>
-              <a className="leaflet-control-zoom-out" href="#" title="Zoom out" role="button" aria-label="Zoom out">&#x2212;</a>
+            {/* Add Zoom Control manually to position it bottom right */}
+            <div className="leaflet-bottom leaflet-right">
+              <div className="leaflet-control-zoom leaflet-bar leaflet-control">
+                <a className="leaflet-control-zoom-in" href="#" title="Zoom in" role="button" aria-label="Zoom in">+</a>
+                <a className="leaflet-control-zoom-out" href="#" title="Zoom out" role="button" aria-label="Zoom out">&#x2212;</a>
+              </div>
             </div>
-          </div>
 
-          {layers.map(layer => (
-            <GeoJSON 
-              key={layer.id}
-              data={layer.data} 
-              style={getFeatureStyle}
-              onEachFeature={onEachFeature}
-            />
-          ))}
-          <FitBounds data={latestBoundsData} />
-        </MapContainer>
+            {layers.map(layer => (
+              <GeoJSON 
+                key={layer.id}
+                data={layer.data} 
+                style={getFeatureStyle}
+                onEachFeature={onEachFeature}
+              />
+            ))}
+            <FitBounds data={latestBoundsData} />
+          </MapContainer>
+        ) : (
+          <Map3D
+            ref={map3dRef}
+            initialViewState={{
+              longitude: 15.0,
+              latitude: 65.0,
+              zoom: 5,
+              pitch: 45,
+              bearing: 0
+            }}
+            mapStyle="https://basemaps.cartocdn.com/gl/positron-gl-style/style.json"
+            interactiveLayerIds={layers.flatMap(l => [`fill-${l.id}`, `line-${l.id}`, `circle-${l.id}`])}
+            onClick={(e) => {
+              if (e.features && e.features.length > 0) {
+                setSelectedFeature(e.features[0]);
+              } else {
+                setSelectedFeature(null);
+              }
+            }}
+          >
+            <NavigationControl position="bottom-right" />
+            {layers.map(layer => (
+              <Source key={layer.id} id={`source-${layer.id}`} type="geojson" data={layer.data}>
+                <Layer
+                  id={`fill-${layer.id}`}
+                  type="fill-extrusion"
+                  paint={{
+                    'fill-extrusion-color': ['get', '_color'],
+                    'fill-extrusion-height': 30,
+                    'fill-extrusion-base': 0,
+                    'fill-extrusion-opacity': 0.8
+                  }}
+                  filter={['==', ['geometry-type'], 'Polygon']}
+                />
+                <Layer
+                  id={`line-${layer.id}`}
+                  type="line"
+                  paint={{
+                    'line-color': ['get', '_color'],
+                    'line-width': 2
+                  }}
+                  filter={['==', ['geometry-type'], 'LineString']}
+                />
+                <Layer
+                  id={`circle-${layer.id}`}
+                  type="circle"
+                  paint={{
+                    'circle-color': ['get', '_color'],
+                    'circle-radius': 6,
+                    'circle-stroke-width': 1,
+                    'circle-stroke-color': '#ffffff'
+                  }}
+                  filter={['==', ['geometry-type'], 'Point']}
+                />
+              </Source>
+            ))}
+          </Map3D>
+        )}
       </div>
 
       {/* Floating Overlay */}
@@ -241,9 +326,27 @@ export default function App() {
             <MapIcon className="w-6 h-6 text-slate-800" />
             <h1 className="text-xl font-bold tracking-tight text-slate-900">Sosi kartvisning</h1>
           </div>
-          <p className="text-sm text-slate-700">
+          <p className="text-sm text-slate-700 mb-4">
             Visualize Norwegian SOSI (.sos) files interactively.
           </p>
+          
+          {/* 2D / 3D Toggle */}
+          <div className="flex bg-black/10 p-1 rounded-lg w-full">
+            <button
+              onClick={() => setViewMode('2d')}
+              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors ${viewMode === '2d' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <MapIcon className="w-4 h-4" />
+              2D Map
+            </button>
+            <button
+              onClick={() => setViewMode('3d')}
+              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors ${viewMode === '3d' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'}`}
+            >
+              <Box className="w-4 h-4" />
+              3D Map
+            </button>
+          </div>
         </div>
 
         {/* Drop Zone */}
@@ -320,7 +423,7 @@ export default function App() {
             <div className="space-y-3">
               <div className="flex justify-between items-center pb-2 border-b border-black/10">
                 <span className="text-xs font-medium text-slate-600">Feature Type</span>
-                <span className="text-sm text-slate-800 bg-black/5 px-2 py-1 rounded">{selectedFeature.geometry.type}</span>
+                <span className="text-sm text-slate-800 bg-black/5 px-2 py-1 rounded">{selectedFeature.geometry?.type || 'Unknown'}</span>
               </div>
               
               {Object.keys(selectedFeature.properties || {}).length > 0 ? (
