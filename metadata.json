@@ -1,0 +1,5 @@
+{
+  "name": "Norwegian SOSI Viewer",
+  "description": "Interactive map application to visualize Norwegian SOSI (.sos) files with drag-and-drop support and attribute inspection.",
+  "requestFramePermissions": []
+}
