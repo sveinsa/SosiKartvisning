@@ -265,7 +265,15 @@ export default function App() {
                 setSelectedFeature(null);
               }
             }}
+            terrain={{ source: 'terrain', exaggeration: 1.5 }}
           >
+            <Source
+              id="terrain"
+              type="raster-dem"
+              tiles={['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png']}
+              encoding="terrarium"
+              tileSize={256}
+            />
             <NavigationControl position="bottom-right" />
             {layers.map(layer => (
               <Source key={layer.id} id={`source-${layer.id}`} type="geojson" data={layer.data}>
@@ -274,20 +282,19 @@ export default function App() {
                   type="fill-extrusion"
                   paint={{
                     'fill-extrusion-color': ['get', '_color'],
-                    'fill-extrusion-height': 30,
-                    'fill-extrusion-base': 0,
+                    'fill-extrusion-height': 50,
                     'fill-extrusion-opacity': 0.8
                   }}
-                  filter={['==', ['geometry-type'], 'Polygon']}
+                  filter={['==', '$type', 'Polygon']}
                 />
                 <Layer
                   id={`line-${layer.id}`}
                   type="line"
                   paint={{
                     'line-color': ['get', '_color'],
-                    'line-width': 2
+                    'line-width': 3
                   }}
-                  filter={['==', ['geometry-type'], 'LineString']}
+                  filter={['==', '$type', 'LineString']}
                 />
                 <Layer
                   id={`circle-${layer.id}`}
@@ -298,7 +305,7 @@ export default function App() {
                     'circle-stroke-width': 1,
                     'circle-stroke-color': '#ffffff'
                   }}
-                  filter={['==', ['geometry-type'], 'Point']}
+                  filter={['==', '$type', 'Point']}
                 />
               </Source>
             ))}
